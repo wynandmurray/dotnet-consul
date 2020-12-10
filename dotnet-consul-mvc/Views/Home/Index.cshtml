@@ -3,6 +3,31 @@
 }
 
 <div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://docs.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+    <h1 class="display-4">Consul Test</h1>
+    
+    <button onclick="doTask();" class="btn btn-primary">Do task...</button>
+
+    <p style="margin-top:30px;">
+        <span id="result"></span>
+    </p>
+
+    <script>
+        function doTask() {
+            $.ajax({
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                'type': 'POST',
+                'url': '/DoTask',
+                'data': '{ "Name" : "Wynand"}',
+                'dataType': 'json',
+                'success': function (returnVal) {
+
+                    $("#result").html(returnVal["message"]);
+
+                }
+            });
+        }
+    </script>
 </div>
