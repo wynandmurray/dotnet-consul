@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net5.0</TargetFramework>
-    <RootNamespace>dotnet_consul</RootNamespace>
+    <RootNamespace>dotnet_consul_mvc</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
