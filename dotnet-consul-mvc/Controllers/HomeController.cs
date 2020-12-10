@@ -1,13 +1,10 @@
-﻿using dotnet_consul_mvc.Models;
+﻿using Consul;
+using System;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading.Tasks;
-using Consul;
-using System.Text;
 
 namespace dotnet_consul_mvc.Controllers
 {
@@ -32,8 +29,6 @@ namespace dotnet_consul_mvc.Controllers
             var consulHandler = new ConsulHandler();
             var handlerResponse = await consulHandler.DoConsulTaskAsync();
 
-
-
             return Ok(handlerResponse);
         }
     }
@@ -53,25 +48,14 @@ namespace dotnet_consul_mvc.Controllers
 
             if (cacheResult.Response == null)
             {
-                // Add the KV entry with a 20-seconf timeout.
-                var sessionId = await client.Session.Create(new SessionEntry { 
-                    Name = "testsession",
-                    TTL = TimeSpan.FromSeconds(10),
-                    LockDelay = TimeSpan.Zero,
-                    Behavior = SessionBehavior.Delete
-                }).ConfigureAwait(false);
+                // Add the KV entry with a timeout.
+                await CreateConsulCacheEntry(cacheKey, newExpiryDateTimeTicks);
 
-                await client.KV.Acquire(new KVPair(cacheKey)
-                {
-                    Value = Encoding.UTF8.GetBytes(newExpiryDateTimeTicks.ToString()),
-                    Session = sessionId.Response
-                });
-
-                response.Message = "Work DNE! Cache Key Not Found... Added cache key.";
+                response.Message = "Action ALLOWED. Cache Key was NOT FOUND and was subsequently ADDED.";
             }
             else
             {
-                var cachedExpiryTicks = Convert.ToInt64(Encoding.UTF8.GetString(cacheResult.Response.Value));
+                var cachedExpiryTicks = Convert.ToInt64(Encoding.UTF8.GetString(cacheResult.Response.Value).Split("|").First());
                 var cachedExpiryDateTime = new DateTime(cachedExpiryTicks);
                 var currentDateTime = new DateTime(currentDateTimeTicks);
 
@@ -81,29 +65,19 @@ namespace dotnet_consul_mvc.Controllers
                 
                 if (cachedExpiryTicks < currentDateTimeTicks)
                 {
-                    // "refresh" the token...
+                    // Destroy session with the name "testsession"
                     var allSession = await client.Session.List();
                     var sessions = allSession.Response.Where(s => s.Name == "testsession").ToList();
 
-                    foreach(var s in sessions)
-                    {
-                        await client.Session.Destroy(s.ID);
-                    }
+                    // foreach(var s in sessions)
+                    // {
+                    //     await client.Session.Destroy(s.ID);
+                    // }
+
+                    await client.Session.Destroy(Encoding.UTF8.GetString(cacheResult.Response.Value).Split("|").Last());
 
                     // createt the new session
-                    var sessionId = await client.Session.Create(new SessionEntry
-                    {
-                        Name = "testsession",
-                        TTL = TimeSpan.FromSeconds(10),
-                        LockDelay = TimeSpan.Zero,
-                        Behavior = SessionBehavior.Delete
-                    }).ConfigureAwait(false);
-
-                    await client.KV.Acquire(new KVPair(cacheKey)
-                    {
-                        Value = Encoding.UTF8.GetBytes(newExpiryDateTimeTicks.ToString()),
-                        Session = sessionId.Response
-                    });
+                    await CreateConsulCacheEntry(cacheKey, newExpiryDateTimeTicks);
 
                     responseMessage += $"<br />RESULT: Expired cache key found.<br /> The following Sessions were deleted: " + string.Join("<br />", sessions.Select(s => s.ID));
                     responseMessage += $"<br />A new session was created and the action was ALLOWED!!";
@@ -116,44 +90,27 @@ namespace dotnet_consul_mvc.Controllers
                 response.Message = responseMessage;
             }
             
-            
-            
-            
             return response;
         }
 
+        private async Task CreateConsulCacheEntry(string cacheKey, long expiryDateTimeTicks)
+        {
+            var client = new ConsulClient();
+            var sessionId = await client.Session.Create(new SessionEntry
+            {
+                Name = "testsession",
+                TTL = TimeSpan.FromSeconds(10),
+                LockDelay = TimeSpan.Zero,
+                Behavior = SessionBehavior.Delete
+            }).ConfigureAwait(false);
 
-
-
-
-        //private async Task CreateConsulCacheEntry()
-        //{
-        //    var client = new ConsulClient();
-        //    var sessionId = await client.Session.Create(new SessionEntry
-        //    {
-        //        Name = "testsession",
-        //        TTL = TimeSpan.FromSeconds(10),
-        //        LockDelay = TimeSpan.Zero,
-        //        Behavior = SessionBehavior.Delete
-        //    }).ConfigureAwait(false);
-
-        //    await client.KV.Acquire(new KVPair(cacheKey)
-        //    {
-        //        Value = Encoding.UTF8.GetBytes(newExpiryDateTimeTicks.ToString()),
-        //        Session = sessionId.Response
-        //    });
-        //}
-
-
-
-
+            await client.KV.Acquire(new KVPair(cacheKey)
+            {
+                Value = Encoding.UTF8.GetBytes(expiryDateTimeTicks.ToString() + "|" + sessionId.Response),
+                Session = sessionId.Response
+            });
+        }
     }
-
-
-
-
-
-
 
     public class PostObject
     {
@@ -164,6 +121,4 @@ namespace dotnet_consul_mvc.Controllers
     {
         public string Message { get; set; }
     }
-
-
 }
